@@ -6,17 +6,19 @@
 | <a href="#what-is-tip"><b>Tip Overview</b></a>
 | <a href="#how-to-use-tip"><b>Using Tip</b></a>
 | <a href="#more-tip-tricks"><b>More Tip tricks</b></a>
+| <a href="#youtu-agent"><b>Youtu-Agent</b></a>
 | <a href="#youtu-llm-small-and-powerful"><b>Youtu-LLM</b></a>
 | <a href="#performance-comparison"><b>Performance</b></a>
 </p>
 
-Tip is a proactive on-device AI assistant that intelligently understands your current work. As a more user-friendly extension of Youtu-Agent, Tip integrates desktop automation, agent invocation, and more. It is fully open source, supports offline on-device use, and keeps your privacy secure.
+Tip is a proactive on-device AI assistant that intelligently understands your current work. As a more user-friendly extension of [Youtu-Agent](https://github.com/TencentCloudADP/Youtu-agent), Tip integrates desktop automation, agent invocation, and more. It is fully open source, supports offline on-device use, and keeps your privacy secure.
 
 Tip is powered by a series of self-developed lightweight models:
 - Youtu-LLM: A compact 1.96B model with powerful native agent capabilities.
   > [🤗 Model](https://huggingface.co/collections/tencent/youtu) | [📑 Technical Report](youtu-llm/assets/Youtu-LLM_Technical_Report.pdf) | [🚀 Quick Start Guide](youtu-llm/README.md)
 - Youtu-VL: 4B on-device multimodal large model, comprehensive visual perception capability (soon to be open source)
 
+You are also free to swap out the model for any alternative you prefer.
 
 (Demo video link coming soon)
 
@@ -75,7 +77,7 @@ Add more skills under “Settings - GUI Agent” to help Tip operate the desktop
 
 ### Youtu Agent
 
-Tip integrates Youtu Agent to give the model more abilities. In “Settings - Youtu Agent,” switch to a config file. Two demo configs are available: “File manager” (bash/file management) and “File manager plus” (adds some format-parsing ability).
+Tip integrates [Youtu Agent](https://github.com/TencentCloudADP/Youtu-agent) to give the model more abilities. In “Settings - Youtu Agent,” switch to a config file. Two demo configs are available: “File manager” (bash/file management) and “File manager plus” (adds some format-parsing ability).
 
 When selecting a file, use “Right click - Open with - Tip” so Tip gets the file path. Click “Agent Execute” to have Tip interpret the file contents.
 
