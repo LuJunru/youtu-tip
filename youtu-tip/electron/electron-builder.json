@@ -1,0 +1,82 @@
+{
+  "$schema": "https://raw.githubusercontent.com/electron-userland/electron-builder/master/packages/app-builder-lib/scheme.json",
+  "appId": "com.flintstudio.tip",
+  "productName": "Tip",
+  "asar": true,
+  "directories": {
+    "output": "release/${version}"
+  },
+  "files": [
+    "dist-electron",
+    "dist",
+    "assets"
+  ],
+  "extraResources": [
+    {
+      "from": "../python/dist/tip-sidecar",
+      "to": "sidecar",
+      "filter": [
+        "**/*"
+      ]
+    }
+  ],
+  "mac": {
+    "artifactName": "${productName}_${version}.${ext}",
+    "category": "public.app-category.productivity",
+    "identity": "Xiang Fei (2Z3QCJ5C44)",
+    "icon": "assets/app.icns",
+    "minimumSystemVersion": "12.0.0",
+    "fileAssociations": [
+      {
+        "ext": [
+          "txt",
+          "docx",
+          "pptx",
+          "csv"
+        ],
+        "name": "Tip Document",
+        "description": "Open files with Tip",
+        "role": "Viewer"
+      }
+    ],
+    "notarize": {
+      "teamId": "2Z3QCJ5C44"
+    },
+    "target": [
+      {
+        "target": "dmg",
+        "arch": [
+          "arm64"
+        ]
+      },
+      {
+        "target": "zip",
+        "arch": [
+          "arm64"
+        ]
+      }
+    ]
+  },
+  "win": {
+    "target": [
+      {
+        "target": "nsis",
+        "arch": [
+          "x64"
+        ]
+      }
+    ],
+    "artifactName": "${productName}_${version}.${ext}"
+  },
+  "nsis": {
+    "oneClick": false,
+    "perMachine": false,
+    "allowToChangeInstallationDirectory": true,
+    "deleteAppDataOnUninstall": false
+  },
+  "publish": {
+    "provider": "generic",
+    "channel": "latest",
+    "url": "https://downloads.tip.example.com"
+  }
+}

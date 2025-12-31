@@ -1,0 +1,51 @@
+# macOS
+.DS_Store
+*.swp
+
+# Node / pnpm
+node_modules/
+.pnpm-store/
+pnpm-lock.yaml.bak
+
+# Builds
+/dist/
+/out/
+release/
+*.log
+
+# Electron
+/electron/dist/
+/electron/dist-electron/
+/electron/out/
+/electron/.vite/
+
+# Python
+__pycache__/
+*.pyc
+/.venv/
+.poetry/
+*.tsbuildinfo
+python/.mypy_cache/
+python/.pytest_cache/
+python/build/
+python/dist/
+python/*.spec
+
+# Swift build artifacts
+/electron/assets/bin/*
+!/electron/assets/bin/macos/
+/electron/assets/bin/macos/*
+!/electron/assets/bin/macos/capture.swift
+/build/
+
+# IDE
+.idea/
+.vscode/
+*.code-workspace
+
+# Env files
+.env
+.env.*
+
+
+apple-*.md

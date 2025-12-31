@@ -1,0 +1,49 @@
+{
+  "$schema": "./settings.schema.json",
+  "settingsVersion": "0.6.1",
+  "language": "system",
+  "llmActiveId": "tip_cloud",
+  "vlmActiveId": "tip_cloud",
+  "llmProfiles": [
+    {
+      "id": "tip_cloud",
+      "name": "Tip Cloud",
+      "provider": "tip_cloud",
+      "baseUrl": "https://tipapi.wandeer.world/v1",
+      "model": "LLM",
+      "apiModel": "LLM",
+      "apiKey": "",
+      "openaiBaseUrl": "",
+      "openaiModel": "",
+      "ollamaBaseUrl": "http://127.0.0.1:11434",
+      "ollamaModel": "qwen2.5vl:3b",
+      "headers": {
+        "Content-Type": "application/json"
+      },
+      "stream": true,
+      "temperature": 0.2,
+      "maxTokens": 2048,
+      "timeoutMs": 60000,
+      "isLocked": true
+    }
+  ],
+  "features": {
+    "visionEnabled": true,
+    "guiAgentEnabled": true,
+    "youtuAgentEnabled": true,
+    "youtuAgentConfig": "agents/simple/base",
+    "startupGuideEnabled": true
+  },
+  "shortcuts": {
+    "holdToSense": [
+      "Control",
+      "Shift"
+    ],
+    "cancelThresholdPx": 8
+  },
+  "paths": {
+    "cacheDir": "~/Library/Caches/Tip",
+    "settingsFile": "~/Library/Application Support/Tip/settings.json",
+    "logsDir": "~/Library/Logs/Tip"
+  }
+}

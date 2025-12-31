@@ -1,0 +1,121 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Tip Settings",
+  "type": "object",
+  "required": ["language", "llmProfiles", "llmActiveId", "shortcuts", "paths"],
+  "properties": {
+    "settingsVersion": {
+      "type": "string"
+    },
+    "language": {
+      "type": "string",
+      "enum": ["system", "zh-CN", "en-US"]
+    },
+    "llmActiveId": {
+      "type": "string"
+    },
+    "vlmActiveId": {
+      "type": "string",
+      "default": ""
+    },
+    "llmProfiles": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["id", "name", "provider", "headers", "stream", "model", "baseUrl"],
+        "properties": {
+          "id": { "type": "string" },
+          "name": { "type": "string" },
+          "provider": {
+            "type": "string",
+            "enum": ["tip_cloud", "ollama", "static_openai"]
+          },
+          "baseUrl": {
+            "anyOf": [
+              { "type": "string", "format": "uri" },
+              { "type": "string", "maxLength": 0 }
+            ]
+          },
+          "model": { "type": "string" },
+          "apiModel": { "type": "string" },
+          "apiKey": { "type": "string" },
+          "ollamaBaseUrl": { "type": "string", "format": "uri", "default": "http://127.0.0.1:11434" },
+          "ollamaModel": { "type": "string", "default": "qwen2.5vl:3b" },
+          "openaiModel": { "type": "string", "default": "" },
+          "openaiBaseUrl": {
+            "anyOf": [
+              { "type": "string", "format": "uri" },
+              { "type": "string", "maxLength": 0 }
+            ]
+          },
+          "headers": {
+            "type": "object",
+            "patternProperties": {
+              ".+": { "type": "string" }
+            },
+            "additionalProperties": false
+          },
+          "stream": { "type": "boolean" },
+          "temperature": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 2,
+            "default": 0.2
+          },
+          "maxTokens": {
+            "type": "integer",
+            "minimum": 1,
+            "default": 2048
+          },
+          "timeoutMs": {
+            "type": "integer",
+            "minimum": 1000,
+            "default": 60000
+          },
+          "isLocked": { "type": "boolean", "default": false }
+        },
+        "additionalProperties": false
+      }
+    },
+    "shortcuts": {
+      "type": "object",
+      "required": ["holdToSense", "cancelThresholdPx"],
+      "properties": {
+        "holdToSense": {
+          "type": "array",
+          "items": { "type": "string" },
+          "minItems": 2,
+          "maxItems": 4
+        },
+        "cancelThresholdPx": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 40
+        }
+      },
+      "additionalProperties": false
+    },
+    "paths": {
+      "type": "object",
+      "required": ["cacheDir", "settingsFile", "logsDir"],
+      "properties": {
+        "cacheDir": { "type": "string" },
+        "settingsFile": { "type": "string" },
+        "logsDir": { "type": "string" }
+      },
+      "additionalProperties": false
+    },
+    "features": {
+      "type": "object",
+      "properties": {
+        "visionEnabled": { "type": "boolean", "default": true },
+        "guiAgentEnabled": { "type": "boolean", "default": true },
+        "youtuAgentEnabled": { "type": "boolean", "default": true },
+        "youtuAgentConfig": { "type": "string", "default": "agents/simple/base" },
+        "startupGuideEnabled": { "type": "boolean", "default": true }
+      },
+      "additionalProperties": false
+    }
+  },
+  "additionalProperties": false
+}

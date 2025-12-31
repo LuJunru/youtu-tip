@@ -1,0 +1,367 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Youtu-Tip 端侧AI助手</title>
+    
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.2/gsap.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.2/ScrollTrigger.min.js"></script>
+
+    <style>
+        body { background: radial-gradient(circle at 20% 20%, #f3e8ff 0, #e0f2fe 35%, #ffffff 80%); color: #0f172a; font-family: -apple-system, sans-serif; overflow-x: hidden; }
+        ::-webkit-scrollbar { width: 0px; background: transparent; }
+        .gradient-text { background: linear-gradient(135deg, #8b5cf6 0%, #3b82f6 60%, #38bdf8 100%); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
+        .glass-nav { background: rgba(255, 255, 255, 0.85); backdrop-filter: blur(18px); -webkit-backdrop-filter: blur(18px); border-bottom: 1px solid rgba(15,23,42,0.06); box-shadow: 0 4px 30px rgba(15, 23, 42, 0.08); }
+        .btn-gradient { background: linear-gradient(135deg, #8b5cf6, #3b82f6); color: #fff; box-shadow: 0 10px 25px rgba(79, 70, 229, 0.25); }
+        
+        /* 图片叠加样式 */
+        .img-stack {
+            position: absolute;
+            top: 0; left: 0;
+            width: 100%; height: 100%;
+            object-fit: cover;
+            opacity: 0; /* 默认隐藏 */
+            transition: transform 0.5s ease;
+        }
+        /* 第一张默认显示 */
+        #img-1 { opacity: 1; }
+
+        /* 表格样式 */
+        .data-table th { text-align: left; padding: 12px; color: #475569; font-weight: 600; border-bottom: 1px solid #e2e8f0; font-size: 0.9rem; background: #f8fafc; }
+        .data-table td { padding: 12px; border-bottom: 1px solid #e2e8f0; font-variant-numeric: tabular-nums; font-size: 0.95rem; color: #0f172a; }
+        .data-table tr:hover { background: #f1f5f9; }
+        .highlight-win { color: #2563eb; font-weight: 700; }
+        .highlight-second { text-decoration: underline; text-decoration-color: #2563eb; }
+        
+        /* 隐藏类 */
+        .hidden-panel { display: none; }
+    </style>
+</head>
+<body class="antialiased">
+
+    <!-- 导航栏 -->
+    <nav class="fixed top-0 w-full z-50 glass-nav py-4">
+        <div class="max-w-7xl mx-auto px-6 flex justify-between items-center">
+            <div class="flex items-center gap-3">
+                <img src="youtu-llm/assets/logo.svg" alt="Tip Logo" class="h-9 w-9 rounded-lg shadow-sm object-contain">
+                <span class="font-bold text-xl tracking-tight text-slate-900">Youtu-Tip</span>
+            </div>
+            <div class="flex gap-6 text-sm font-medium text-slate-600 items-center">
+                <a href="#features" class="hover:text-slate-900 transition" data-i18n="nav_features">特性</a>
+                <a href="#llm" class="hover:text-slate-900 transition" data-i18n="nav_llm">模型</a>
+                <a href="https://github.com/TencentCloudADP/youtu-tip" target="_blank" class="hover:text-slate-900 transition">GitHub</a>
+                <button id="lang-btn" onclick="toggleLanguage()" class="border border-slate-300 rounded-full px-3 py-1 text-xs hover:bg-slate-100 text-slate-700 transition">English</button>
+            </div>
+        </div>
+    </nav>
+
+    <!-- Hero 区域 -->
+    <header class="relative min-h-screen flex flex-col justify-center items-center text-center px-4 pt-20">
+        <div class="space-y-6 z-10 max-w-4xl">
+            <div class="flex flex-col md:flex-row items-center justify-center gap-6 opacity-0 hero-anim mb-8">
+                <!-- 【需替换】大 Logo -->
+                <h1 class="text-5xl md:text-7xl font-bold tracking-tight gradient-text" data-i18n="hero_title">
+                    <img src="youtu-tip/docs/assets/model.png" class="inline-block h-[1em] md:h-[1.2em] align-middle drop-shadow-xl"> 
+                    Youtu-Tip 端侧AI助手
+                </h1>
+            </div>
+            <p class="text-xl md:text-2xl text-slate-600 max-w-2xl mx-auto opacity-0 hero-anim" data-i18n="hero_subtitle">
+                Tip 是一个主动式端侧 AI 助手，一键调用，智能理解当前工作内容。离线可用，保护隐私。
+            </p>
+
+            <div class="pt-6 opacity-0 hero-anim flex flex-col items-center gap-3">
+                <a href="https://github.com/TencentCloudADP/youtu-tip/releases" class="btn-gradient px-8 py-3 rounded-full font-semibold text-lg hover:opacity-90 transition transform hover:scale-105 flex items-center gap-2">
+                    <svg class="w-5 h-5" fill="currentColor" viewBox="0 0 20 20"><path d="M13.586 3.586a2 2 0 112.828 2.828l-.793.793-2.828-2.828.793-.793zM11.379 5.793L3 14.172V17h2.828l8.38-8.379-2.83-2.828z"></path></svg>
+                    <span data-i18n="btn_download">下载 macOS 版（M 系列）</span>
+                </a>
+                <p class="text-sm text-slate-500" data-i18n="hero_note">目前仅支持 Apple Silicon (M 系列芯片)</p>
+            </div>
+        </div>
+
+        <!-- 【需替换】演示视频 -->
+        <div class="mt-16 w-full max-w-6xl mx-auto rounded-2xl overflow-hidden border border-slate-200 bg-white shadow-2xl opacity-0 hero-video-anim">
+            <iframe class="w-full aspect-video" src="https://www.youtube.com/embed/3toxc575Uuo?si=5f1hPvuGRyY9BidM" title="YouTube video player" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" referrerpolicy="strict-origin-when-cross-origin" allowfullscreen></iframe>
+        </div>
+    </header>
+
+    <!-- 滚动视差区域 (修复了高度问题和多图切换) -->
+    <!-- 注意：这里的 h-screen 是关键，不再写 300vh -->
+    <section id="features" class="relative h-screen bg-gradient-to-br from-slate-50 via-white to-slate-100 overflow-hidden flex flex-col justify-center border-t border-slate-100"> 
+        <div class="max-w-7xl mx-auto w-full px-6 flex flex-col md:flex-row items-center h-full">
+            
+            <!-- 左侧：文字 -->
+            <div class="w-full md:w-1/2 relative z-10 h-[300px] flex items-center">
+                
+                <!-- 特性 1 -->
+                <div class="feature-text absolute w-full opacity-100 transform translate-y-0" id="txt-1">
+                    <h3 class="text-4xl font-bold text-slate-900 mb-4" data-i18n="feat1_title">一个按键<br><span class="text-slate-500">AI 超级入口</span></h3>
+                    <p class="text-xl text-slate-600" data-i18n="feat1_desc">按下热键或选中文本，Tip 随时待命。打造更智能的 Spotlight，带来极致便捷体验。</p>
+                </div>
+                
+                <!-- 特性 2 -->
+                <div class="feature-text absolute w-full opacity-0 transform translate-y-10" id="txt-2">
+                    <h3 class="text-4xl font-bold text-slate-900 mb-4" data-i18n="feat2_title">端侧模型<br><span class="text-slate-500">百分百隐私</span></h3>
+                    <p class="text-xl text-slate-600" data-i18n="feat2_desc">内置 Youtu-llm 模型，完全离线运行。所有数据仅在本地处理，安全无忧。</p>
+                </div>
+
+                <!-- 特性 3 -->
+                <div class="feature-text absolute w-full opacity-0 transform translate-y-10" id="txt-3">
+                    <h3 class="text-4xl font-bold text-slate-900 mb-4" data-i18n="feat3_title">读文件、看网页<br><span class="text-slate-500">全能助手</span></h3>
+                    <p class="text-xl text-slate-600" data-i18n="feat3_desc">模拟键鼠操作、接入 MCP 服务器。在本地运行一个真正的多功能智能体。</p>
+                </div>
+            </div>
+
+            <!-- 右侧：图片堆叠区 -->
+            <div class="w-full md:w-1/2 flex items-center justify-center pl-0 md:pl-10 mt-10 md:mt-0">
+                <div class="relative w-full max-w-[540px] aspect-square bg-white rounded-3xl border border-slate-200 overflow-hidden shadow-xl">
+                    <img id="img-1" src="youtu-tip/docs/assets/page_fig1.png" class="img-stack" alt="Interaction">
+                    <img id="img-2" src="youtu-tip/docs/assets/page_fig2.png" class="img-stack" alt="Privacy">
+                    <img id="img-3" src="youtu-tip/docs/assets/page_fig3.png" class="img-stack" alt="Agent">
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- 新增章节：Youtu-LLM 介绍 -->
+    <section id="llm" class="py-32 bg-white border-t border-slate-200">
+        <div class="max-w-7xl mx-auto px-6">
+            <div class="text-center mb-16 space-y-4">
+                <span class="text-blue-500 font-semibold tracking-wide text-sm uppercase">The Engine Inside</span>
+                <h2 class="text-4xl md:text-6xl font-bold text-slate-900">
+                    Youtu-LLM <br>
+                    <span class="text-slate-500 text-3xl md:text-5xl" data-i18n="llm_subtitle">小巧身躯，强悍性能</span>
+                </h2>
+                <p class="text-slate-600 max-w-3xl mx-auto text-lg pt-4" data-i18n="llm_intro">
+                    1.96B 参数，128K 上下文。专为 STEM、代码与智能体任务设计。<br>
+                    在轻量级模型中重新定义 SOTA。
+                </p>
+            </div>
+
+            <!-- 核心亮点 Grid -->
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-6 mb-24">
+                <div class="p-8 rounded-3xl bg-white border border-slate-200 shadow-sm hover:border-blue-200 hover:shadow-md transition duration-300">
+                    <div class="text-4xl mb-4">🔬</div>
+                    <h3 class="text-xl font-bold text-slate-900 mb-2" data-i18n="highlight1_title">STEM 优先设计</h3>
+                    <p class="text-slate-600 text-sm leading-relaxed" data-i18n="highlight1_desc">从词表构建到课程学习，一切以提升 STEM 能力和智能体能力为出发点。</p>
+                </div>
+                <div class="p-8 rounded-3xl bg-white border border-slate-200 shadow-sm hover:border-blue-200 hover:shadow-md transition duration-300">
+                    <div class="text-4xl mb-4">🤖</div>
+                    <h3 class="text-xl font-bold text-slate-900 mb-2" data-i18n="highlight2_title">原生智能体能力</h3>
+                    <p class="text-slate-600 text-sm leading-relaxed" data-i18n="highlight2_desc">128K 长上下文训练 + Agentic Mid-training，轻松应对多轮复杂端侧任务。</p>
+                </div>
+                <div class="p-8 rounded-3xl bg-white border border-slate-200 shadow-sm hover:border-blue-200 hover:shadow-md transition duration-300">
+                    <div class="text-4xl mb-4">🚀</div>
+                    <h3 class="text-xl font-bold text-slate-900 mb-2" data-i18n="highlight3_title">SOTA 性能 (MLA)</h3>
+                    <p class="text-slate-600 text-sm leading-relaxed" data-i18n="highlight3_desc">基于 dense MLA 架构，超越传统 GQA/MHA 范式，轻松集成现有生态。</p>
+                </div>
+            </div>
+
+            <!-- 性能对比面板 -->
+            <div class="bg-white rounded-3xl border border-slate-200 overflow-hidden shadow-lg">
+                <div class="p-6 border-b border-slate-200 flex flex-col md:flex-row justify-between items-center gap-4">
+                    <h3 class="text-xl font-bold text-slate-900" data-i18n="bench_title">性能基准测试</h3>
+                    <div class="flex bg-slate-100 rounded-lg p-1">
+                        <button onclick="switchTab('base')" id="tab-base" class="px-4 py-1.5 rounded-md text-sm font-medium text-white bg-gradient-to-r from-purple-500 to-blue-500 shadow transition">Base Model</button>
+                        <button onclick="switchTab('instruct')" id="tab-instruct" class="px-4 py-1.5 rounded-md text-sm font-medium text-slate-600 hover:text-slate-900 transition">Instruct Model</button>
+                    </div>
+                </div>
+                
+                <div class="p-6 overflow-x-auto">
+                    <!-- Base Model Table -->
+                    <div id="panel-base" class="animate-fade">
+                        <table class="w-full data-table text-slate-700">
+                            <thead>
+                                <tr>
+                                    <th>Benchmark</th>
+                                    <th>Qwen3-1.7B</th>
+                                    <th>SmoLM3-3B</th>
+                                    <th>Gemma3-4B</th>
+                                    <th>Qwen3-4B</th>
+                                    <th>Llama3.1-8B</th>
+                                    <th class="text-blue-600">Youtu-LLM-2B</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <tr><td>MMLU-Pro (Commonsense)</td><td>34.9%</td><td>35.3%</td><td>29.4%</td><td>46.1%</td><td>36.2%</td><td class="highlight-win">48.4%</td></tr>
+                                <tr><td>GSM8K (STEM)</td><td>68.2%</td><td>67.3%</td><td>38.5%</td><td>80.8%</td><td>47.8%</td><td class="highlight-win">77.6%</td></tr>
+                                <tr><td>MBPP+ (Coding)</td><td>71.0%</td><td>66.1%</td><td>61.9%</td><td>80.8%</td><td>62.7%</td><td class="highlight-win">81.8%</td></tr>
+                                <tr><td>HumanEval (Coding)</td><td>49.9%</td><td>34.8%</td><td>36.6%</td><td>57.6%</td><td>36.0%</td><td class="highlight-win">64.6%</td></tr>
+                                <tr><td>LiveCodeBench v6</td><td>5.1%</td><td>2.9%</td><td>2.9%</td><td>6.9%</td><td>3.4%</td><td class="highlight-win">9.7%</td></tr>
+                                <tr><td>SWE-Bench-Verified (Agent)</td><td>0.6%</td><td>7.2%</td><td>5.7%</td><td>-</td><td>-</td><td class="highlight-win">17.7%</td></tr>
+                            </tbody>
+                        </table>
+                        <p class="text-xs text-slate-500 mt-4 text-center">* 部分数据摘录，查看 <a href="./README.md" class="text-blue-600 hover:underline">README</a> 获取完整复现代码。</p>
+                    </div>
+
+                    <!-- Instruct Model Table -->
+                    <div id="panel-instruct" class="hidden-panel animate-fade">
+                        <table class="w-full data-table text-slate-700">
+                            <thead>
+                                <tr>
+                                    <th>Benchmark</th>
+                                    <th>Qwen3-1.7B</th>
+                                    <th>SmoLM3-3B</th>
+                                    <th>Qwen3-4B</th>
+                                    <th class="text-blue-600">Youtu-LLM-2B</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <tr><td>GAIA (Agent)</td><td>11.4%</td><td>11.7%</td><td>25.5%</td><td class="highlight-win">33.9%</td></tr>
+                                <tr><td>xbench (Agent)</td><td>11.7%</td><td>13.9%</td><td>18.4%</td><td class="highlight-win">19.5%</td></tr>
+                                <tr><td>SWE-Bench-Verified</td><td>0.6%</td><td>7.2%</td><td>5.7%</td><td class="highlight-win">17.7%</td></tr>
+                                <tr><td>EnConda-Bench</td><td>10.8%</td><td>3.5%</td><td>16.1%</td><td class="highlight-win">21.5%</td></tr>
+                                <tr><td>τ²-Bench (Tool)</td><td>2.6%</td><td>9.7%</td><td>10.9%</td><td class="highlight-win">15.0%</td></tr>
+                            </tbody>
+                        </table>
+                         <p class="text-xs text-slate-500 mt-4 text-center">* 对比同级别指令模型表现。</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- 下载区域 -->
+    <footer class="py-12 text-center text-slate-500 text-sm bg-white border-t border-slate-200">
+        <p>&copy; 2025 Youtu-Tip. Open Source Project.</p>
+    </footer>
+
+    <!-- 脚本逻辑 -->
+    <script>
+        gsap.registerPlugin(ScrollTrigger);
+
+        // --- 1. Hero 动画 ---
+        const tl = gsap.timeline();
+        tl.to(".hero-anim", { y: 0, opacity: 1, duration: 1, stagger: 0.2, ease: "power3.out" })
+          .to(".hero-video-anim", { opacity: 1, y: 0, duration: 1, ease: "power2.out" }, "-=0.5");
+
+        // --- 2. 核心修复：滚动视差 (文字+图片切换) ---
+        // 我们不设置 CSS 高度，而是让 ScrollTrigger 钉住(pin) 3000px 的滚动距离
+        // 这样滚动完 3000px 后，页面会自动解冻，不会留下空白
+        const scrollTl = gsap.timeline({
+            scrollTrigger: {
+                trigger: "#features",
+                start: "top top",
+                end: "+=3000", // 滚动距离：决定动画播放时长
+                pin: true,     // 钉住
+                scrub: true,   // 绑定滚动条
+                anticipatePin: 1
+            }
+        });
+
+        scrollTl
+            // 阶段 1 -> 2
+            .to("#txt-1", { opacity: 0, y: -20, duration: 1 }) // 文字1 上浮消失
+            .to("#img-1", { opacity: 0, duration: 1 }, "<")    // 图片1 淡出
+            .to("#txt-2", { opacity: 1, y: 0, duration: 1 })   // 文字2 上浮出现
+            .to("#img-2", { opacity: 1, duration: 1 }, "<")    // 图片2 淡入
+            .to({}, { duration: 1 }) // 停顿一会儿，让用户看完内容
+
+            // 阶段 2 -> 3
+            .to("#txt-2", { opacity: 0, y: -20, duration: 1 })
+            .to("#img-2", { opacity: 0, duration: 1 }, "<")
+            .to("#txt-3", { opacity: 1, y: 0, duration: 1 })
+            .to("#img-3", { opacity: 1, duration: 1 }, "<")
+            .to({}, { duration: 1 }); // 停顿
+
+        // 3. LLM Tab 切换逻辑
+        function switchTab(type) {
+            const baseBtn = document.getElementById('tab-base');
+            const instructBtn = document.getElementById('tab-instruct');
+            const basePanel = document.getElementById('panel-base');
+            const instructPanel = document.getElementById('panel-instruct');
+
+            if (type === 'base') {
+                baseBtn.className = "px-4 py-1.5 rounded-md text-sm font-medium text-white bg-gradient-to-r from-purple-500 to-blue-500 shadow transition";
+                instructBtn.className = "px-4 py-1.5 rounded-md text-sm font-medium text-slate-600 hover:text-slate-900 transition";
+                basePanel.style.display = 'block';
+                instructPanel.style.display = 'none';
+            } else {
+                instructBtn.className = "px-4 py-1.5 rounded-md text-sm font-medium text-white bg-gradient-to-r from-purple-500 to-blue-500 shadow transition";
+                baseBtn.className = "px-4 py-1.5 rounded-md text-sm font-medium text-slate-600 hover:text-slate-900 transition";
+                instructPanel.style.display = 'block';
+                basePanel.style.display = 'none';
+            }
+        }
+
+        // 4. 语言切换 (包含新章节)
+        const translations = {
+            zh: {
+                nav_features: "特性",
+                nav_llm: "模型",
+                nav_download: "下载",
+                hero_title: "Youtu-Tip 端侧AI助手",
+                hero_subtitle: "Tip 是一个主动式端侧 AI 助手，一键调用，智能理解当前工作内容。离线可用，保护隐私。",
+                btn_download: "下载 macOS 版（M 系列）",
+                hero_note: "目前仅支持 Apple Silicon (M 系列芯片)",
+                feat1_title: '一个按键<br><span class="text-slate-500">AI 超级入口</span>',
+                feat1_desc: "按下热键或选中文本，Tip 随时待命。打造更智能的 Spotlight，带来极致便捷体验。",
+                feat2_title: '端侧模型<br><span class="text-slate-500">百分百隐私</span>',
+                feat2_desc: "内置 Youtu-llm 模型，完全离线运行。所有数据仅在本地处理，安全无忧。",
+                feat3_title: '读文件、看网页<br><span class="text-slate-500">全能助手</span>',
+                feat3_desc: "模拟键鼠操作、接入 MCP 服务器。在本地运行一个真正的多功能智能体。",
+                // LLM Section
+                llm_subtitle: "小巧身躯，强悍性能",
+                llm_intro: "1.96B 参数，128K 上下文。专为 STEM、代码与智能体任务设计。<br>在轻量级模型中重新定义 SOTA。",
+                highlight1_title: "STEM 优先设计",
+                highlight1_desc: "从词表构建到课程学习，一切以提升 STEM 能力和智能体能力为出发点。",
+                highlight2_title: "原生智能体能力",
+                highlight2_desc: "128K 长上下文训练 + Agentic Mid-training，轻松应对多轮复杂端侧任务。",
+                highlight3_title: "SOTA 性能 (MLA)",
+                highlight3_desc: "基于 dense MLA 架构，超越传统 GQA/MHA 范式，轻松集成现有生态。",
+                bench_title: "性能基准测试",
+                // End
+                ready_title: "准备好体验未来了吗？",
+                btn_github: "前往 GitHub Release 下载"
+            },
+            en: {
+                nav_features: "Features",
+                nav_llm: "Model", // new
+                nav_download: "Download",
+                hero_title: "Youtu-Tip AI Assistant",
+                hero_subtitle: "Tip is a proactive on-device AI assistant: one hotkey, understands what's on your screen. Offline-ready and privacy-first.",
+                btn_download: "Download for macOS (Apple Silicon)",
+                hero_note: "Currently Apple Silicon (M-Series) only",
+                feat1_title: 'One Keystroke<br><span class="text-slate-500">Super AI Entry</span>',
+                feat1_desc: "Press a hotkey or select text, Tip is ready. A smarter Spotlight for the ultimate convenient experience.",
+                feat2_title: 'On-Device Model<br><span class="text-slate-500">100% Privacy</span>',
+                feat2_desc: "Built-in Youtu-llm models running completely offline. All data is processed locally.",
+                feat3_title: 'Reads Files & Web<br><span class="text-slate-500">All-Round Agent</span>',
+                feat3_desc: "Simulates mouse/keyboard actions, connects to MCP servers. Run a versatile agent locally.",
+                // LLM Section
+                llm_subtitle: "Small Size, Massive Power",
+                llm_intro: "1.96B Params, 128K Context. Designed for STEM, Coding & Agent tasks.<br>Redefining SOTA for lightweight models.",
+                highlight1_title: "STEM-First Design",
+                highlight1_desc: "From vocabulary construction to curriculum learning, everything starts with improving STEM and Agent capabilities.",
+                highlight2_title: "Native Agent Capabilities",
+                highlight2_desc: "128K long context training + Agentic Mid-training. Easily handles multi-turn complex on-device tasks.",
+                highlight3_title: "SOTA Performance (MLA)",
+                highlight3_desc: "Based on dense MLA architecture, surpassing traditional GQA/MHA paradigms. Easy to integrate.",
+                bench_title: "Benchmarks",
+                // End
+                ready_title: "Ready to experience the future?",
+                btn_github: "Download from GitHub Release"
+            }
+        };
+
+        let currentLang = 'zh';
+
+        function toggleLanguage() {
+            currentLang = currentLang === 'zh' ? 'en' : 'zh';
+            const btn = document.getElementById('lang-btn');
+            
+            // 更新按钮文字
+            btn.textContent = currentLang === 'zh' ? 'English' : '中文';
+
+            // 更新所有带有 data-i18n 的元素
+            document.querySelectorAll('[data-i18n]').forEach(el => {
+                const key = el.getAttribute('data-i18n');
+                if (translations[currentLang][key]) {
+                    el.innerHTML = translations[currentLang][key];
+                }
+            });
+        }
+    </script>
+</body>
+</html>

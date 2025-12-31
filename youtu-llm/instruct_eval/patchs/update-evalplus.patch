@@ -1,0 +1,674 @@
+From 72b6fdc2d3e2870e74d74f79f30e21154f069077 Mon Sep 17 00:00:00 2001
+From: he <hejf@example.com>
+Date: Tue, 30 Dec 2025 02:12:23 -0800
+Subject: [PATCH] update evalplus
+
+---
+ evalplus/codegen.py                   | 232 +++++++++++++++++++-------
+ evalplus/data/utils.py                |   2 +-
+ evalplus/evaluate.py                  |   1 +
+ evalplus/gen/util/openai_request.py   |  13 +-
+ evalplus/provider/__init__.py         |   4 +
+ evalplus/provider/openai.py           |  70 +++++++-
+ evalplus/sanitize.py                  |   8 +-
+ evalplus/syncheck.py                  |  27 ++-
+ evalplus_run_test_nothink_official.sh |  22 +++
+ evalplus_run_test_official.sh         |  22 +++
+ 10 files changed, 321 insertions(+), 80 deletions(-)
+ create mode 100644 evalplus_run_test_nothink_official.sh
+ create mode 100644 evalplus_run_test_official.sh
+
+diff --git a/evalplus/codegen.py b/evalplus/codegen.py
+index ee8c262..7377545 100644
+--- a/evalplus/codegen.py
++++ b/evalplus/codegen.py
+@@ -8,6 +8,16 @@ from evalplus.sanitize import sanitize
+ from evalplus.utils import progress
+ 
+ 
++import threading
++from concurrent.futures import ThreadPoolExecutor, as_completed
++import json
++import os
++from tqdm import tqdm
++import numpy as np
++from datetime import datetime
++
++
++
+ def codegen(
+     target_path: str,
+     model: DecoderBase,
+@@ -16,6 +26,7 @@ def codegen(
+     n_samples=1,
+     id_range=None,
+     resume=True,
++    num_workers=1,
+ ):
+     task2nexist = {}
+     if resume and target_path.endswith(".jsonl") and os.path.isfile(target_path):
+@@ -36,81 +47,160 @@ def codegen(
+     print(f"Raw outputs will be saved to {raw_target_path}")
+ 
+     backend_type: str = type(model).__name__
+-    with progress(backend_type) as p:
+-        for task_id, task in p.track(dataset.items()):
+-            if id_range is not None:
+-                id_num = int(task_id.split("/")[1])
+-                low, high = id_range
+-                if id_num < low or id_num >= high:
+-                    p.console.print(f"Skipping {task_id} as it is not in {id_range}")
+-                    continue
+-
+-            if not target_path.endswith(".jsonl"):
+-                p_name = task_id.replace("/", "_")
+-                os.makedirs(os.path.join(target_path, p_name), exist_ok=True)
+-                task2nexist[task_id] = len(
+-                    [
+-                        f
+-                        for f in os.listdir(os.path.join(target_path, p_name))
+-                        if f.endswith(".py")
+-                    ]
+-                )
+-
+-            n_more_samples = n_samples
+-            log = f"Codegen: {task_id} @ {model}"
+-            if resume and task2nexist.get(task_id, 0) > 0:
+-                log += f" (resuming from {task2nexist[task_id]})"
+-                n_more_samples -= task2nexist[task_id]
+ 
+-            p.console.print(log)
+-
+-            sidx = n_samples - n_more_samples
++    # 需要全局锁的对象
++    # model_lock = threading.Lock()  # 用于模型调用
++    jsonl_lock = threading.Lock()  # 用于JSONL文件写入
++    print_lock = threading.Lock()  # 用于控制台打印
++
++    def process_task(task_id, task, model, greedy, n_samples, sidx_start, target_path, raw_target_path, progress_desc):
++        """
++        处理单个任务的函数，用于线程池执行
++        """
++        # 任务专属变量
++        p_name = task_id.replace("/", "_")
++        sidx = sidx_start
++        generated_count = 0
++        try:
++            with print_lock:
++                tqdm.write(f"Processing task {task_id} - starting from sample {sidx}")
++                
+             while sidx < n_samples:
+                 prompt = task["prompt"].strip() + "\n"
++                
++                # 模型调用需要加锁（如果是非线程安全的模型）  这个会强制模型串行执行推理
++                # with model_lock:
+                 outputs = model.codegen(
+                     prompt,
+                     do_sample=not greedy,
+-                    num_samples=n_samples - sidx,
++                    num_samples=n_samples - sidx, # 当前轮次需要生成的samples数量
+                 )
+-                assert outputs, "No outputs from model!"
+-                for impl in outputs:
++                    
++                if not outputs:
++                    raise RuntimeError(f"No outputs from model for task {task_id}")
++
++                for impls in outputs:
++                    impl, reasoning_content=impls
+                     solution = prompt + impl if model.is_direct_completion() else impl
+                     sanitized_solution = sanitize(
+                         solution, entrypoint=task["entry_point"]
+                     )
++                    
+                     if target_path.endswith(".jsonl"):
+-                        # Writing the sanitized version
+-                        with open(target_path, "a") as f:
+-                            f.write(
+-                                json.dumps(
+-                                    {"task_id": task_id, "solution": sanitized_solution}
++                        # JSONL文件写入需要加锁   保证数据写入的顺序完整
++                        with jsonl_lock:
++                            # 写入sanitized版本
++                            with open(target_path, "a") as f:
++                                f.write(
++                                    json.dumps(
++                                        {"task_id": task_id, "solution": sanitized_solution}
++                                    )
++                                    + "\n"
++                                )
++                            # 写入原始版本
++                            with open(raw_target_path, "a") as f:
++                                f.write(
++                                    json.dumps({"task_id": task_id, "solution": solution, "reasoning": reasoning_content})
++                                    + "\n"
+                                 )
+-                                + "\n"
+-                            )
+-
+-                        # Writing the raw version
+-                        with open(raw_target_path, "a") as f:
+-                            f.write(
+-                                json.dumps({"task_id": task_id, "solution": solution})
+-                                + "\n"
+-                            )
+                     else:
+-                        # Writing the sanitized version
+-                        with open(
+-                            os.path.join(target_path, p_name, f"{sidx}.py"),
+-                            "w",
+-                            encoding="utf-8",
+-                        ) as f:
++                        # 目录格式直接写入（无需加锁，因为每个任务有独立目录）
++                        sanitized_file = os.path.join(target_path, p_name, f"{sidx}.py")
++                        raw_file = os.path.join(raw_target_path, p_name, f"{sidx}.py")
++                        
++                        with open(sanitized_file, "w", encoding="utf-8") as f:
+                             f.write(sanitized_solution)
+-
+-                        # Writing the raw version
+-                        with open(
+-                            os.path.join(raw_target_path, p_name, f"{sidx}.py"),
+-                            "w",
+-                            encoding="utf-8",
+-                        ) as f:
++                        with open(raw_file, "w", encoding="utf-8") as f:
+                             f.write(solution)
++                    
+                     sidx += 1
++                    generated_count += 1
++                    
++        except Exception as e:
++            # with print_lock:
++            print(f"Error in task {task_id}: {str(e)}")
++            return generated_count
++        
++        return generated_count
++
++    # 主并行处理逻辑
++    # 准备任务列表（先应用id_range过滤）
++    tasks_to_process = []
++    for task_id, task in dataset.items():
++        if id_range is not None:
++            id_num = int(task_id.split("/")[1])
++            low, high = id_range
++            if id_num < low or id_num >= high:
++                continue
++        
++        # 计算需要生成的样本数量
++        n_more_samples = n_samples
++        if not target_path.endswith(".jsonl"):
++            p_name = task_id.replace("/", "_")
++            os.makedirs(os.path.join(target_path, p_name), exist_ok=True)
++            task2nexist[task_id] = len(
++                                            [
++                                                f
++                                                for f in os.listdir(os.path.join(target_path, p_name))
++                                                if f.endswith(".py")
++                                            ]
++                                        )
++        if resume and task2nexist.get(task_id, 0) > 0:
++            n_more_samples -= task2nexist[task_id]
++
++        # 如果不需要生成新样本则跳过
++        if n_more_samples <= 0:
++            continue
++        
++        # 记录起始索引
++        sidx_start = n_samples - n_more_samples
++        if sidx_start != n_samples:
++            print(f"task{task_id} still have {n_samples-sidx_start} samples to generate")
++        tasks_to_process.append((task_id, task, n_more_samples, sidx_start))
++    
++    #For debug,只处理五条数据
++    # tasks_to_process=tasks_to_process[:5]
++
++    # 计算进度条总数（需要生成的总样本量）
++    total_samples = sum(n_more for _, _, n_more, _ in tasks_to_process)
++    # num_workers = batch_size
++    print(f"eval batch size: {num_workers}")
++    print(f"total samples num that need to gen: {total_samples}")
++    print(f"total questions num that need to gen: {len(tasks_to_process)}")
++    with tqdm(total=total_samples, desc=f"Codegen: {model}") as pbar:
++        with ThreadPoolExecutor(max_workers=num_workers) as executor:  # num_workers需自行定义
++            futures = {}
++            # 提交所有任务
++            for task_id, task, n_more_samples, sidx_start in tasks_to_process:
++                future = executor.submit(
++                    process_task,
++                    task_id,
++                    task,
++                    model,
++                    greedy,
++                    sidx_start + n_more_samples,  # 总共的n_samples参数
++                    sidx_start,
++                    target_path,
++                    raw_target_path,
++                    f"Task {task_id}"
++                )
++                futures[future] = task_id
++            
++            # 处理完成的任务
++            for future in as_completed(futures):
++                task_id = futures[future]
++                try:
++                    generated = future.result()
++                    pbar.update(generated)
++                    with print_lock:
++                        tqdm.write(f"Completed task {task_id} - generated {generated} samples")
++                except Exception as e:
++                    tqdm.write(f"Task {task_id} failed: {str(e)}")
++
++    # if model.total_res_num == 0:
++    #     print(f"this time, 题目总数: {model.total_res_num}, 出错数: {model.abnormal_num}, which might be the reviews already done in the previous experiment, deleting the reviews result could be work.")
++    # elif model.total_res_num != 0:
++    #     pass
+ 
+ 
+ def run_codegen(
+@@ -127,6 +217,10 @@ def run_codegen(
+     backend: str = "vllm",
+     force_base_prompt: bool = False,
+     base_url: str = None,
++    thinking_mode: str = None,
++    num_workers: int = 1,
++    exp_name: str = None,
++    generation_config: str = None,
+     verify_certificate: bool = True,
+     tp: int = 1,
+     evalperf_type: str = None,  # For EvalPerf
+@@ -147,12 +241,22 @@ def run_codegen(
+         "perf-CoT",
+     ]
+ 
++    print(f'thinking_mode: {thinking_mode}')
++
++    if generation_config is not None and isinstance(generation_config,str):
++        generation_config=json.loads(generation_config)
++
++    temperature=generation_config['temperature']
++
+     # Make dir for codes generated by each model
+-    identifier = model.strip("./").replace("/", "--") + f"_{backend}_temp_{temperature}"
++    rel_model_name= model.strip("./").replace("/", "--")
++    exp_name = exp_name if exp_name else rel_model_name
++    identifier = rel_model_name + f"_{backend}_t_{temperature}"
+     if evalperf_type:
+         identifier += f"-{evalperf_type}"
+ 
+-    target_path = os.path.join(root, dataset, identifier)
++    run_time = datetime.now().strftime('%Y%m%d_%H%M%S')
++    target_path = os.path.join(root, dataset, thinking_mode, exp_name, run_time, identifier)
+     if jsonl_fmt:
+         target_path += ".jsonl"
+     else:
+@@ -207,7 +311,8 @@ def run_codegen(
+     # Make project dir
+     os.makedirs(root, exist_ok=True)
+     # Make dataset dir
+-    os.makedirs(os.path.join(root, dataset), exist_ok=True)
++    # os.makedirs(os.path.join(root, dataset), exist_ok=True)
++    os.makedirs(os.path.join(root, dataset, thinking_mode, exp_name, run_time), exist_ok=True)
+ 
+     # Model instructions
+     instruction_prefix = "Please provide a self-contained Python script that solves the following problem in a markdown code block:"
+@@ -226,12 +331,14 @@ def run_codegen(
+     model_runner = make_model(
+         model=model,
+         backend=backend,
+-        batch_size=bs,
++        batch_size=bs,  # 这个batch_size没啥用，不能控制每次处理的题目的数量
+         temperature=temperature,
+         force_base_prompt=force_base_prompt,
+         dataset=dataset,
+         base_url=base_url,
+         verify_certificate=verify_certificate,
++        thinking_mode=thinking_mode,
++        generation_config=generation_config,
+         tp=tp,
+         instruction_prefix=instruction_prefix,
+         response_prefix=response_prefix,
+@@ -253,6 +360,7 @@ def run_codegen(
+         n_samples=n_samples,
+         resume=resume,
+         id_range=id_range,
++        num_workers=num_workers,
+     )
+ 
+     # force shutdown the model runner
+diff --git a/evalplus/data/utils.py b/evalplus/data/utils.py
+index 2b5fab8..0074370 100644
+--- a/evalplus/data/utils.py
++++ b/evalplus/data/utils.py
+@@ -20,10 +20,10 @@ def get_dataset_metadata(name: str, version: str, mini: bool, noextreme: bool =
+     if noextreme:
+         extra = "-NoExtreme"
+     url = f"https://github.com/evalplus/{name.lower()}_release/releases/download/{version}/{name}{extra}.jsonl.gz"
++    print(f"dataset_url:{url}")
+     cache_path = os.path.join(CACHE_DIR, f"{name}{extra}-{version}.jsonl")
+     return url, cache_path
+ 
+-
+ def make_cache(gzip_url, cache_path):
+     # Check if human eval file exists in CACHE_DIR
+     if not os.path.exists(cache_path):
+diff --git a/evalplus/evaluate.py b/evalplus/evaluate.py
+index bd67557..f8e35ef 100644
+--- a/evalplus/evaluate.py
++++ b/evalplus/evaluate.py
+@@ -140,6 +140,7 @@ def evaluate(
+     gguf_file: Optional[str] = None,
+     **model_kwargs,
+ ):
++    print(model_kwargs)
+     if model_kwargs:
+         # To suppress the warning of tokenizers
+         os.environ["TOKENIZERS_PARALLELISM"] = os.environ.get(
+diff --git a/evalplus/gen/util/openai_request.py b/evalplus/gen/util/openai_request.py
+index a974e1f..b4eb9f3 100644
+--- a/evalplus/gen/util/openai_request.py
++++ b/evalplus/gen/util/openai_request.py
+@@ -13,19 +13,22 @@ def make_request(
+     n: int = 1,
+     **kwargs
+ ) -> ChatCompletion:
+-    kwargs["top_p"] = 0.95
+-    kwargs["max_completion_tokens"] = max_tokens
++    # kwargs["top_p"] = 0.95
++    # kwargs["max_completion_tokens"] = max_tokens
+     if model.startswith("o1-"):  # pop top-p and max_completion_tokens
+         kwargs.pop("top_p")
+         kwargs.pop("max_completion_tokens")
+         temperature = 1.0  # o1 models do not support temperature
+ 
++    messages = [
++                {"role": "user", "content": message},
++            ]
++    
+     return client.chat.completions.create(
+         model=model,
+-        messages=[
+-            {"role": "user", "content": message},
+-        ],
++        messages=messages,
+         temperature=temperature,
++        max_tokens=max_tokens,
+         n=n,
+         **kwargs
+     )
+diff --git a/evalplus/provider/__init__.py b/evalplus/provider/__init__.py
+index eaa9fba..6ed79fa 100644
+--- a/evalplus/provider/__init__.py
++++ b/evalplus/provider/__init__.py
+@@ -20,6 +20,8 @@ def make_model(
+     enable_chunked_prefill=False,
+     # openai only
+     base_url=None,
++    thinking_mode=None,
++    generation_config=None,
+     verify_certificate=True,
+     # hf only
+     attn_implementation="eager",
+@@ -73,6 +75,8 @@ def make_model(
+             temperature=temperature,
+             base_url=base_url,
+             verify_certificate=verify_certificate,
++            thinking_mode=thinking_mode,
++            generation_config=generation_config,
+             instruction_prefix=instruction_prefix,
+             response_prefix=response_prefix,
+         )
+diff --git a/evalplus/provider/openai.py b/evalplus/provider/openai.py
+index 87ef37a..a4be6e1 100644
+--- a/evalplus/provider/openai.py
++++ b/evalplus/provider/openai.py
+@@ -3,24 +3,38 @@ from typing import List
+ 
+ import httpx
+ import openai
++import time
+ 
+ from evalplus.gen.util import openai_request
+ from evalplus.provider.base import DecoderBase
+ from evalplus.provider.utility import concurrent_call
+-
+-
++from tqdm import tqdm
++import numpy as np
+ class OpenAIChatDecoder(DecoderBase):
+-    def __init__(self, name: str, base_url=None, verify_certificate=True, **kwargs) -> None:
++    def __init__(self, name: str, base_url=None, verify_certificate=True, thinking_mode=None, generation_config=None, **kwargs) -> None:
+         super().__init__(name, **kwargs)
++        base_url = base_url.rstrip('/').rsplit('/chat/completions', 1)[0]
+         self.base_url = base_url
+         self.verify_certificate = verify_certificate
++        self.thinking_mode = thinking_mode
++        self.generation_config = generation_config
++
++        # adnormal metrics
++        self.abnormal_num = 0
++        self.total_res_num = 0
++        self.empty_num = 0
++        self.truncated_num = 0
++        self.rep_r = []
++        
+ 
+     def codegen(
+         self, prompt: str, do_sample: bool = True, num_samples: int = 200
+     ) -> List[str]:
+         if do_sample:
+             assert self.temperature > 0, "Temperature must be positive for sampling"
++        # print(f"orginal batch_size: {self.batch_size}")
+         batch_size = min(self.batch_size, num_samples)
++        # print(f"new batch_size: {self.batch_size}")
+         prompt = self.instruction_prefix + f"\n```python\n{prompt.strip()}\n```"
+ 
+         # use concurrency based batching for o1 and deepseek models
+@@ -38,18 +52,60 @@ class OpenAIChatDecoder(DecoderBase):
+             )
+         )
+ 
++        response_gen_start_time = time.time()
+         ret = openai_request.make_auto_request(
+             client,
+             message=prompt,
+             model=self.name,
+-            max_tokens=self.max_new_tokens,
+-            temperature=self.temperature,
+             n=batch_size,
++            **self.generation_config
+         )
+-
++        # print("ret:", ret)
++        # print('-' * 50)
+         outputs = []
++        # print(f"response number: {len(ret.choices)}")
+         for item in ret.choices:
+-            outputs.append(item.message.content)
++            full_response = item.message.content
++            # print("full_response:",full_response)
++            # remove </think> in thinking mode
++            # parsing thinking content
++            finish_reason = item.finish_reason
++            
++            if finish_reason == 'length':
++                self.truncated_num += 1
++            # self.rep_r.append(get_repr(finish_reason))
++            self.total_res_num += 1
++
++            if self.thinking_mode == 'think':
++                try:
++                    # 查找思考标记位置
++                    thinking_end_index = full_response.find("</think>")
++                    if thinking_end_index != -1:
++                        thinking_content = full_response[:thinking_end_index].strip()
++                        content = full_response[thinking_end_index + len("</think>"):].strip()
++                    else:
++                        thinking_content = full_response
++                        content = ''
++                        tqdm.write(f"an infinite response is generated !!!!")
++                except Exception as e:
++                    tqdm.write("Parsing error:", str(e))
++                    thinking_content = full_response
++                    content = ''
++            elif self.thinking_mode == 'non_think':
++                content = full_response
++                thinking_content=''
++            
++            pred_content = content
++            if pred_content == "" or pred_content == "response is empty":
++                self.empty_num += 1
++                self.abnormal_num += 1
++            elif pred_content == "No valid option found":
++                self.abnormal_num += 1
++            # print("formal content:",content)
++            outputs.append([content,thinking_content])
++        response_gen_end_time = time.time()
++        tqdm.write(f"response generation takes time: {response_gen_end_time - response_gen_start_time}s")
++        
+ 
+         return outputs
+ 
+diff --git a/evalplus/sanitize.py b/evalplus/sanitize.py
+index bd283c9..1ed856f 100644
+--- a/evalplus/sanitize.py
++++ b/evalplus/sanitize.py
+@@ -3,7 +3,7 @@
+ import os
+ import pathlib
+ from typing import Dict, Generator, List, Optional, Set, Tuple
+-
++import time
+ import tree_sitter_python
+ from tqdm import tqdm
+ from tree_sitter import Language, Node, Parser
+@@ -28,6 +28,7 @@ ASSIGNMENT_TYPE = "assignment"
+ 
+ 
+ def code_extract(text: str) -> str:
++    code_extract_start_time = time.time()
+     lines = text.split("\n")
+     longest_line_pair = (0, 0)
+     longest_so_far = 0
+@@ -35,12 +36,13 @@ def code_extract(text: str) -> str:
+     for i in range(len(lines)):
+         for j in range(i + 1, len(lines)):
+             current_lines = "\n".join(lines[i : j + 1])
+-            if syntax_check(current_lines):
++            if syntax_check(current_lines, timeout=0.005):
+                 current_length = sum(1 for line in lines[i : j + 1] if line.strip())
+                 if current_length > longest_so_far:
+                     longest_so_far = current_length
+                     longest_line_pair = (i, j)
+-
++    code_extract_end_time = time.time()
++    tqdm.write(f"code extraction takes time: {code_extract_end_time - code_extract_start_time}s")
+     return "\n".join(lines[longest_line_pair[0] : longest_line_pair[1] + 1])
+ 
+ 
+diff --git a/evalplus/syncheck.py b/evalplus/syncheck.py
+index 62274ff..8eda927 100644
+--- a/evalplus/syncheck.py
++++ b/evalplus/syncheck.py
+@@ -9,16 +9,39 @@ import traceback
+ from termcolor import colored
+ 
+ from evalplus.data import load_solutions
++from tqdm import tqdm
+ 
++from func_timeout import func_timeout, FunctionTimedOut
+ 
+-def syntax_check(code, verbose=False):
++def _safe_parse(code):
++    """内部语法检查函数，不处理超时"""
++    # ast.parse(code)
++    # return True
+     try:
+         ast.parse(code)
+         return True
+-    except (SyntaxError, MemoryError):
++    # except (SyntaxError, MemoryError) as e:
++    except Exception as e:
++        raise False
++
++def syntax_check(code, verbose=False, timeout=0.01):
++    """使用 func_timeout 实现的语法检查（支持超时机制）"""
++    try:
++        # 使用 func_timeout 包装执行，设置超时时间
++        return func_timeout(timeout, _safe_parse, args=(code,))
++    except FunctionTimedOut:
++        if verbose:
++            tqdm.write(f"⚠️ 解析超时（{timeout}秒），LLM response可能存在问题")
++        return False
++    except (SyntaxError, MemoryError) as e:
+         if verbose:
+             traceback.print_exc()
+         return False
++    except Exception as e:
++        # 处理其他未知异常[6](@ref)
++        if verbose:
++            tqdm.write(f"❌ 未知错误: {type(e).__name__}: {str(e)}")
++        return False
+ 
+ 
+ def script(
+diff --git a/evalplus_run_test_nothink_official.sh b/evalplus_run_test_nothink_official.sh
+new file mode 100644
+index 0000000..fb1b119
+--- /dev/null
++++ b/evalplus_run_test_nothink_official.sh
+@@ -0,0 +1,22 @@
++export XDG_CACHE_HOME="./data_cache"  #local 数据存放路径
++
++task=${1}
++model_name=${2}
++base_url=${3}
++exp_name=${exp_name}
++thinking_mode='non_think'
++generation_config='{"max_tokens": 8192, "temperature": 0.7, "top_p": 0.8, "extra_body":{"top_k": 20, "chat_template_kwargs": {"enable_thinking": False}},"presence_penalty": 1.5}'
++
++python evalplus/evaluate.py --model "${model_name}" \
++                --dataset ${task}  \
++                --backend openai \
++                --bs 4 \
++                --root evalplus_results \
++                --exp_name ${exp_name} \
++                --generation_config "${generation_config}" \
++                --n_samples 4 \
++                --base_url ${base_url} \
++                --num_workers 8 \
++                --parallel 16 \
++                --thinking_mode ${thinking_mode} \
++                --trust_remote_code True
+diff --git a/evalplus_run_test_official.sh b/evalplus_run_test_official.sh
+new file mode 100644
+index 0000000..b18a730
+--- /dev/null
++++ b/evalplus_run_test_official.sh
+@@ -0,0 +1,22 @@
++export XDG_CACHE_HOME="./data_cache"  #local 数据存放路径
++
++task=${1}
++model_name=${2}
++base_url=${3}
++exp_name=${exp_name}
++thinking_mode='think'
++generation_config='{"max_tokens": 32768, "temperature": 1.0, "top_p": 0.95, "extra_body":{"top_k": 20,}, "presence_penalty": 1.5}'
++
++python evalplus/evaluate.py --model "${model_name}" \
++                --dataset ${task}  \
++                --backend openai \
++                --bs 4 \
++                --root evalplus_results \
++                --exp_name ${exp_name} \
++                --generation_config "${generation_config}" \
++                --n_samples 4 \
++                --base_url ${base_url} \
++                --num_workers 8 \
++                --parallel 16 \
++                --thinking_mode ${thinking_mode} \
++                --trust_remote_code True
+\ No newline at end of file
+-- 
+2.34.1
+

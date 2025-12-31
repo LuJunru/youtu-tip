@@ -1,0 +1,483 @@
+From 5676960f1dccd7e648210c861c2aa88bc2f9983c Mon Sep 17 00:00:00 2001
+From: he <hejf@example.com>
+Date: Tue, 30 Dec 2025 00:27:15 -0800
+Subject: [PATCH] Update evalscope
+
+---
+ check_service_health.py                     | 55 +++++++++++++++
+ evalscope/api/benchmark/benchmark.py        |  4 +-
+ evalscope/api/messages/utils.py             | 10 ++-
+ evalscope/benchmarks/aime/aime24_adapter.py |  1 +
+ evalscope/benchmarks/aime/aime25_adapter.py |  6 +-
+ evalscope/benchmarks/bfcl/v3/generation.py  |  7 +-
+ evalscope/benchmarks/ceval/ceval_adapter.py |  8 ++-
+ evalscope/benchmarks/gpqa/gpqa_adapter.py   | 41 ++++++++++-
+ evalscope/config.py                         |  3 +
+ evalscope/run.py                            |  3 +-
+ evalscope/utils/multi_choices.py            | 17 +++--
+ run_test_official.py                        | 75 +++++++++++++++++++++
+ run_tool_test_official.py                   | 48 +++++++++++++
+ 13 files changed, 263 insertions(+), 15 deletions(-)
+ create mode 100644 check_service_health.py
+ create mode 100644 run_test_official.py
+ create mode 100644 run_tool_test_official.py
+
+diff --git a/check_service_health.py b/check_service_health.py
+new file mode 100644
+index 00000000..0b7953c4
+--- /dev/null
++++ b/check_service_health.py
+@@ -0,0 +1,55 @@
++import time
++import requests
++import subprocess
++
++def check_service_health(api_url, max_attempts=3600, interval=30):
++    """
++    检测服务启动状态，通过健康检查接口验证服务是否可用
++    
++    参数:
++        port (int): 服务端口号
++        max_attempts (int): 最大尝试时间（秒），默认3600秒
++        interval (int): 检查间隔时间（秒），默认30秒
++    
++    返回:
++        bool: 如果服务在超时时间内启动成功返回True，否则返回False
++    """
++    print("检测服务启动状态...")
++    
++    attempts = 0
++    health_url = f"{api_url}/health"
++    
++    while attempts < max_attempts:
++        try:
++            # 发送HTTP GET请求到健康检查接口
++            response = requests.get(health_url, timeout=10)
++            
++            # 如果返回200状态码，说明服务正常
++            if response.status_code == 200:
++                print(f"服务在端口上已成功启动")
++                return True
++                
++        except requests.exceptions.RequestException as e:
++            # 捕获所有请求异常（连接拒绝、超时等）
++            pass
++        
++        # 等待指定间隔后重试
++        time.sleep(interval)
++        attempts += interval
++        print(f"第 {attempts//interval} 次检查，已等待 {attempts} 秒...")
++    
++    # 如果超过最大尝试时间，服务仍未启动
++    print(f"vLLM服务启动超时（超过 {max_attempts} 秒）")
++    
++    return False
++
++# 使用示例
++if __name__ == "__main__":
++    # 检查8080端口的服务状态，最大等待1800秒（30分钟），每30秒检查一次
++    is_healthy = check_service_health(8080, max_attempts=1800, interval=30)
++    
++    if is_healthy:
++        print("服务健康检查通过，可以继续执行后续操作")
++    else:
++        print("服务启动失败，需要排查问题")
++        exit(1)
+\ No newline at end of file
+diff --git a/evalscope/api/benchmark/benchmark.py b/evalscope/api/benchmark/benchmark.py
+index f59bbda3..daa23bbb 100644
+--- a/evalscope/api/benchmark/benchmark.py
++++ b/evalscope/api/benchmark/benchmark.py
+@@ -31,6 +31,8 @@ class DataAdapter(LLMJudgeMixin, SandboxMixin, ABC):
+         self._task_config = task_config
+         super().__init__(task_config=task_config)
+ 
++        self.benchmark_repeats=task_config.dataset_args.get(benchmark_meta.name).get('repeats')
++
+         self.reformat_subset = False
+         """Whether to reformat the subset data with subset key"""
+ 
+@@ -139,7 +141,7 @@ class DataAdapter(LLMJudgeMixin, SandboxMixin, ABC):
+         """
+         Return the number of repeats for each sample in the benchmark.
+         """
+-        return self._task_config.repeats
++        return self.benchmark_repeats if self.benchmark_repeats else self._task_config.repeats
+ 
+     @property
+     def dataset_hub(self) -> str:
+diff --git a/evalscope/api/messages/utils.py b/evalscope/api/messages/utils.py
+index fc5a85b8..1c8f5cd4 100644
+--- a/evalscope/api/messages/utils.py
++++ b/evalscope/api/messages/utils.py
+@@ -12,8 +12,7 @@ def parse_content_with_reasoning(content: str) -> tuple[str, Optional[ContentRea
+     - The first element is the input content with the <think> tag and its contents fully removed.
+     - The second element is a ContentReasoning object (or None if no <think> tag is found).
+     """
+-    # Match <think> tag with optional attributes anywhere in the string
+-    pattern = (r'<think(?:\s+signature="([^"]*)")?(?:\s+redacted="(true)")?\s*>(.*?)</think>')
++    pattern = (r'<think(?:\s+signature="([^"]*)")?(?:\s+redacted="(true)")?\s*>(.*?)</think>')  #捕获到第一个匹配的</think>截止
+     match = re.search(pattern, content, re.DOTALL)
+ 
+     if match:
+@@ -31,5 +30,12 @@ def parse_content_with_reasoning(content: str) -> tuple[str, Optional[ContentRea
+                 redacted=redacted_value == 'true',
+             ),
+         )
++    ##NOTE: for think mode, ensure that <think> is in content.
++    elif '<think>' in content:
++        # return content, None
++        return ('', ContentReasoning(
++                reasoning=content
++            ),
++        )
+     else:
+         return content, None
+diff --git a/evalscope/benchmarks/aime/aime24_adapter.py b/evalscope/benchmarks/aime/aime24_adapter.py
+index 9496e4b5..6dadfc3d 100644
+--- a/evalscope/benchmarks/aime/aime24_adapter.py
++++ b/evalscope/benchmarks/aime/aime24_adapter.py
+@@ -28,6 +28,7 @@ logger = get_logger()
+                 'numeric': True
+             }
+         }],
++        aggregation='mean_and_pass_at_k',
+         few_shot_num=0,
+         train_split=None,
+         eval_split='train',  # Only train set is available
+diff --git a/evalscope/benchmarks/aime/aime25_adapter.py b/evalscope/benchmarks/aime/aime25_adapter.py
+index a25a913c..186b83bc 100644
+--- a/evalscope/benchmarks/aime/aime25_adapter.py
++++ b/evalscope/benchmarks/aime/aime25_adapter.py
+@@ -92,7 +92,8 @@ Remember to put your answer inside \\boxed{{}}."""
+         description=
+         'The AIME 2025 benchmark is based on problems from the American Invitational Mathematics Examination, a prestigious high school mathematics competition. This benchmark tests a model\'s ability to solve challenging mathematics problems by generating step-by-step solutions and providing the correct final answer.',
+         dataset_id='opencompass/AIME2025',
+-        subset_list=['AIME2025-I', 'AIME2025-II'],
++        # subset_list=['AIME2025-I', 'AIME2025-II'],
++        subset_list=['default'],
+         metric_list=[{
+             'acc': {
+                 'numeric': True
+@@ -100,7 +101,8 @@ Remember to put your answer inside \\boxed{{}}."""
+         }],
+         few_shot_num=0,
+         train_split=None,
+-        eval_split='test',
++        # eval_split='test',
++        eval_split='train',
+         prompt_template=PROMPT_TEMPLATE,
+     )
+ )
+diff --git a/evalscope/benchmarks/bfcl/v3/generation.py b/evalscope/benchmarks/bfcl/v3/generation.py
+index 3d1b7fb1..0fb678cf 100644
+--- a/evalscope/benchmarks/bfcl/v3/generation.py
++++ b/evalscope/benchmarks/bfcl/v3/generation.py
+@@ -167,7 +167,12 @@ def generate_turn_with_tools(model: Model, row: dict[str, Any]):
+             )
+ 
+             # Get model response
+-            model_output = model.generate(current_sample.input, tools=current_sample.tools)
++            try:
++                model_output = model.generate(current_sample.input, tools=current_sample.tools)
++            except Exception as e:
++                logger.error(f'Error infer: {e}')
++                break
++            # model_output = model.generate(current_sample.input, tools=current_sample.tools)
+ 
+             # Handle the response based on the model output structure
+             message = model_output.message
+diff --git a/evalscope/benchmarks/ceval/ceval_adapter.py b/evalscope/benchmarks/ceval/ceval_adapter.py
+index edaf0a0a..514525e1 100644
+--- a/evalscope/benchmarks/ceval/ceval_adapter.py
++++ b/evalscope/benchmarks/ceval/ceval_adapter.py
+@@ -161,9 +161,13 @@ class CEVALAdapter(MultiChoiceAdapter):
+         import re
+ 
+         # Use regex to find the answer in the format "答案：LETTER"
+-        match = re.search(r'答案：([A-D])', prediction)
++        match=re.findall(r'答案是?\s{0,4}\*{0,2}\s{0,4}[：:]\s{0,4}\*{0,2}\s{0,4}\${0,2}([A-D])', prediction)
++        if not match:
++            match=re.findall(r'\\boxed{\s?\$?\s?(?:text{)?\s?\$?\s?([A-D])\s?\$?\s?}?\s?\$?\s?}', prediction)
+         if match:
+-            return match.group(1)
++            return match[-1]
+         else:
+             logger.warning(f'No valid answer found in prediction: {prediction}')
+             return ''
++        
++
+diff --git a/evalscope/benchmarks/gpqa/gpqa_adapter.py b/evalscope/benchmarks/gpqa/gpqa_adapter.py
+index 5a0649eb..ad34a169 100644
+--- a/evalscope/benchmarks/gpqa/gpqa_adapter.py
++++ b/evalscope/benchmarks/gpqa/gpqa_adapter.py
+@@ -14,6 +14,7 @@ from evalscope.utils.multi_choices import FEW_SHOT_TEMPLATE, MultipleChoiceTempl
+ 
+ logger = get_logger()
+ 
++SINGLE_ANSWER_COT="{question}\n\n{choices}\n\nPlease reason step by step, and put your final answer within \\boxed{{}}."
+ 
+ @register_benchmark(
+     BenchmarkMeta(
+@@ -27,7 +28,7 @@ logger = get_logger()
+         few_shot_num=0,
+         train_split=None,
+         eval_split='train',  # only have train split
+-        prompt_template=MultipleChoiceTemplate.SINGLE_ANSWER_COT,
++        prompt_template=SINGLE_ANSWER_COT,
+     )
+ )
+ class GPQAAdapter(MultiChoiceAdapter):
+@@ -88,3 +89,41 @@ class GPQAAdapter(MultiChoiceAdapter):
+             'choices': choices,
+             'answer': f'{chr(65 + correct_answer_index)}',
+         }
++
++    def extract_answer(self, prediction, task_state) -> str:
++        match = re.findall(
++        r'(?i)^ANSWER\s*:\s*\$*([A-Z])\$*\s*(?:$|\n|\.)',
++        prediction,
++        flags=re.MULTILINE,
++        )
++
++        # If we couldn't match the strict version, we can try the less strict
++        # version for backward compatibility
++        if len(match)==0:
++            match = re.findall(
++                r'(?i)ANSWER\s*:\s*\$*([A-Z])\$*(?:[^\w]|\n|$|\.)',
++                prediction,
++            )
++
++        if len(match)==0:
++            match=re.findall(r'\b([A-Z])\b', prediction)
++
++        if len(match)==0:
++            return ''
++
++        # matched = match.group(1)
++        matched=match[-1]
++
++        def answer_character(index: int) -> str:
++            """0 -> 'A', 1 -> 'B', etc"""
++            if index < 26:
++                return chr(ord('A') + index)
++            else:
++                return str(index - 25)
++
++        allowed_options = set(answer_character(i) for i in range(len(task_state.choices)))
++        # Match must contain a single letter in the allowed choices
++        if matched in allowed_options:
++            return matched
++
++        return ''
+diff --git a/evalscope/config.py b/evalscope/config.py
+index 437bbe6b..560ae10f 100644
+--- a/evalscope/config.py
++++ b/evalscope/config.py
+@@ -91,6 +91,9 @@ class TaskConfig(BaseArgument):
+     work_dir: str = DEFAULT_WORK_DIR
+     """Working directory for storing evaluation results and temporary files."""
+ 
++    outputs_dir: Optional[str] = None
++    """store name"""
++
+     # Debug and runtime mode arguments
+     ignore_errors: bool = False
+     """Whether to continue evaluation when encountering errors."""
+diff --git a/evalscope/run.py b/evalscope/run.py
+index 011660f0..9a563398 100644
+--- a/evalscope/run.py
++++ b/evalscope/run.py
+@@ -55,7 +55,8 @@ def setup_work_directory(task_cfg: TaskConfig, run_time: str):
+         logger.info(f'Set resume from {task_cfg.work_dir}')
+     # elif are_paths_same(task_cfg.work_dir, DEFAULT_WORK_DIR):
+     else:
+-        task_cfg.work_dir = os.path.join(task_cfg.work_dir, run_time)
++        task_cfg.work_dir = os.path.join(task_cfg.work_dir, task_cfg.outputs_dir, run_time)
++        # task_cfg.work_dir = os.path.join(task_cfg.work_dir, run_time)
+ 
+     outputs = OutputsStructure(outputs_dir=task_cfg.work_dir)
+ 
+diff --git a/evalscope/utils/multi_choices.py b/evalscope/utils/multi_choices.py
+index 9ef03ad0..e9693f0b 100644
+--- a/evalscope/utils/multi_choices.py
++++ b/evalscope/utils/multi_choices.py
+@@ -171,20 +171,26 @@ def parse_answers(state: TaskState, multiple_correct: bool = False) -> set[str]:
+     # First check whether the string strictly ends with the expected answer
+     # In this case, we're looking for a single line which contains the expected
+     # ANSWER: <answer> string with only whitespace or a period/full stop at the end.
+-    match = re.search(
+-        r'(?i)^ANSWER\s*:\s*([A-Za-z\d ,]+)\s*(?:$|\n|\.)',
++
++    match = re.findall(
++        r'(?i)^ANSWER\s*:\s*\$*([A-Za-z\d ,]+)\$*\s*(?:$|\n|\.)',
+         state.output.completion,
+         flags=re.MULTILINE,
+     )
+ 
+     # If we couldn't match the strict version, we can try the less strict
+     # version for backward compatibility
++    if len(match)==0:
++        match=None
+     if match is None:
+-        match = re.search(
+-            r'(?i)ANSWER\s*:\s*([A-Za-z\d ,]+)(?:[^\w]|\n|$|\.)',
++        match = re.findall(
++            r'(?i)ANSWER\s*:\s*\$*([A-Za-z\d ,]+)\$*(?:[^\w]|\n|$|\.)',
+             state.output.completion,
+         )
+ 
++    if len(match)==0:
++        match=None
++
+     if match is None:
+         fallback_answer = _fallback_parse_answer(state.output.completion)
+         if fallback_answer:
+@@ -193,7 +199,8 @@ def parse_answers(state: TaskState, multiple_correct: bool = False) -> set[str]:
+     if match is None:
+         return set()
+ 
+-    matched = match.group(1)
++    # matched = match.group(1)
++    matched=match[-1]
+ 
+     # Strip trailing period / full stop
+     matched = matched.strip()
+diff --git a/run_test_official.py b/run_test_official.py
+new file mode 100644
+index 00000000..e7ef8288
+--- /dev/null
++++ b/run_test_official.py
+@@ -0,0 +1,75 @@
++import os
++import sys
++from evalscope import TaskConfig, run_task
++from check_service_health import check_service_health
++
++model_name=sys.argv[1]
++outputs_dir=sys.argv[2]
++api_url=sys.argv[3]
++
++
++local_data_dir='instruct_eval/local_eval_dataset'
++
++task_cfg = TaskConfig(
++    model=model_name,
++    api_url=api_url,
++    eval_type='openai_api',
++    outputs_dir=outputs_dir,
++    work_dir='output_evalscope',
++    datasets=[
++    'aime24',
++    'gpqa_diamond',
++    'live_code_bench',
++    'ceval',
++    'mmlu_pro',
++    'mmlu_redux',
++    'bbh',
++    'drop',
++    'musr',
++    'ifeval',
++    'math_500',
++    'aime25',
++    # 'bfcl_v3',
++    ],
++    dataset_args={ # EvalScope内置支持，无需指定数据集ID
++        'mmlu_pro':{'few_shot_num': 5, 'local_path': os.path.join(local_data_dir,'mmlu_pro')},
++        'mmlu_redux':{'few_shot_num': 0, 'local_path': os.path.join(local_data_dir,'mmlu_redux_2.0')},
++        'bbh':{'few_shot_num': 3, 'local_path': os.path.join(local_data_dir,'bbh')},
++        'gpqa_diamond': {'few_shot_num': 0, 'local_path': os.path.join(local_data_dir,'gpqa_diamond'), 'repeats': 8},
++        # 'ceval':{'few_shot_num': 5, 'local_path': os.path.join(local_data_dir,'ceval_new')},
++        'drop':{'few_shot_num': 3, 'local_path': os.path.join(local_data_dir,'drop')},
++        'musr':{'few_shot_num': 0, 'local_path': os.path.join(local_data_dir,'musr')},
++        'ifeval':{'few_shot_num': 0, 'local_path': os.path.join(local_data_dir,'ifeval')},
++
++        'math_500': {'few_shot_num': 0, 'local_path': os.path.join(local_data_dir,'math_500'), 'repeats': 4},
++        'aime24': {'few_shot_num': 0, 'local_path': os.path.join(local_data_dir,'aime_2024'), 'repeats': 16},
++        'aime25': {'few_shot_num': 0, 'local_path': os.path.join(local_data_dir,'aime_2025'), 'repeats': 16},
++        
++        'live_code_bench':{'few_shot_num': 0, 'subset_list': ['v6'], 'local_path': os.path.join(local_data_dir,'live_code_bench'), 'repeats': 16},
++      
++        'bfcl_v3': {'extra_params':{'underscore_to_dot': True,'is_fc_model': True,}, 'local_path': os.path.join(local_data_dir,'bfcl_v3')},
++    },
++    eval_batch_size=80,
++    generation_config={
++        'max_tokens': 32768, 
++        'temperature': 1.0, 
++        'top_p': 0.95, 
++        'top_k': 20, 
++        # 'extra_body':{'chat_template_kwargs': {'enable_thinking': False}},
++        'presence_penalty': 1.5,
++        # 'parallel_tool_calls': True,
++        'timeout':60000,  # 超时时间
++        'stream':True,  # 是否使用流式输出
++    },
++    repeats=1,
++)
++
++if hasattr(task_cfg.generation_config,'extra_body') and task_cfg.generation_config.extra_body is not None and task_cfg.generation_config.extra_body.get('chat_template_kwargs') and not task_cfg.generation_config.extra_body['chat_template_kwargs'].get('enable_thinking'):
++    task_cfg.outputs_dir=task_cfg.outputs_dir+'/nothink_mode'
++else:
++    task_cfg.outputs_dir=task_cfg.outputs_dir+'/think_mode'
++
++print(f'****{task_cfg.outputs_dir}****')
++
++if check_service_health(api_url=api_url.rsplit('/v1')[0]):
++    run_task(task_cfg=task_cfg)
+diff --git a/run_tool_test_official.py b/run_tool_test_official.py
+new file mode 100644
+index 00000000..89a81f92
+--- /dev/null
++++ b/run_tool_test_official.py
+@@ -0,0 +1,48 @@
++import os
++import sys
++from evalscope import TaskConfig, run_task
++from check_service_health import check_service_health
++
++model_name=sys.argv[1]
++outputs_dir=sys.argv[2]
++api_url=sys.argv[3]
++
++
++local_data_dir='instruct_eval/local_eval_dataset'
++
++task_cfg = TaskConfig(
++    model=model_name,
++    api_url=api_url,
++    eval_type='openai_api',
++    outputs_dir=outputs_dir,
++    work_dir='output_evalscope',
++    datasets=[
++    'bfcl_v3',
++    ],
++    dataset_args={ # EvalScope内置支持，无需指定数据集ID
++        'bfcl_v3': {'extra_params':{'underscore_to_dot': True,'is_fc_model': True,}, 'local_path': os.path.join(local_data_dir,'bfcl_v3')},
++    },
++    eval_batch_size=80,
++    generation_config={
++        'max_tokens': 32768, 
++        'temperature': 1.0, 
++        'top_p': 0.95, 
++        'top_k': 20, 
++        # 'extra_body':{'chat_template_kwargs': {'enable_thinking': False}},
++        'presence_penalty': 1.5,
++        'parallel_tool_calls': True,
++        'timeout':60000,  # 超时时间
++        'stream':True,  # 是否使用流式输出
++    },
++    repeats=1,
++)
++
++if hasattr(task_cfg.generation_config,'extra_body') and task_cfg.generation_config.extra_body is not None and task_cfg.generation_config.extra_body.get('chat_template_kwargs') and not task_cfg.generation_config.extra_body['chat_template_kwargs'].get('enable_thinking'):
++    task_cfg.outputs_dir=task_cfg.outputs_dir+'/nothink_mode'
++else:
++    task_cfg.outputs_dir=task_cfg.outputs_dir+'/think_mode'
++
++print(f'****{task_cfg.outputs_dir}****')
++
++if check_service_health(api_url=api_url.rsplit('/v1')[0]):
++    run_task(task_cfg=task_cfg)
+-- 
+2.34.1
+
