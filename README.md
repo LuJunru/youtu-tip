@@ -2,7 +2,7 @@
 
 <p align="center">
 <a href="README_CN.md"><b>中文</b></a>
-| <a href="https://tencentcloudadp.github.io/youtu-tip/"><b>Website</b></a>
+| <a href="https://www.youtu-tip.com"><b>Website</b></a>
 | <a href="#what-is-tip"><b>Tip Overview</b></a>
 | <a href="#how-to-use-tip"><b>Using Tip</b></a>
 | <a href="#more-tip-tricks"><b>More Tip tricks</b></a>
@@ -26,19 +26,19 @@ You are also free to swap out the model for any alternative you prefer.
 
 ## What is Tip
 
+### Tip’s core traits
+
+Tip focuses on “better interaction, safer privacy, broader capability”:
+
+- **One hotkey, as the AI super entry**: With minimal interaction, you get the model’s power. Press the hotkey and select text or an image—Tip prepares the context for you. We are building a smarter Spotlight-style entry for a smoother AI experience.
+- **On-device models for full privacy**: We support fully offline calls to local model services. All data and processing can run against your own on-device models. The Youtu-LLM series provides strong performance and agent ability for secure local work.
+- **Read files, browse pages—no problem**: GUI Agent and Youtu Agent capabilities let Tip simulate mouse/keyboard actions for desktop control, connect to agents/MCP servers/tools for complex tasks, and run a multifunction agent locally.
+
 ### Why Tip was built
 
 - **Data and privacy safety**: Many LLM agent apps default to processing data in the cloud. For privacy-sensitive scenarios like social platforms, users may not want screen content sent to cloud models and instead prefer private on-device solutions.
 - **The last mile of interaction**: LLM apps usually start with a chat box and require typing. We want a smarter way to complete context: no manual typing, copy/paste, or image uploads—Tip understands what is on screen, completes context, infers intent, and suggests actions to reduce typing and close the interaction gap.
 - **On-device agent environment**: Most agents live in the cloud, making it hard to run local tasks like “understand and organize local files” or “check chats on a social platform.” We aim to provide a mature framework and environment so users can run a more capable agent locally.
-
-### Tip’s core traits
-
-From those motivations, Tip focuses on “better interaction, safer privacy, broader capability”:
-
-- **One hotkey, as the AI super entry**: With minimal interaction, you get the model’s power. Press the hotkey and select text or an image—Tip prepares the context for you. We are building a smarter Spotlight-style entry for a smoother AI experience.
-- **On-device models for full privacy**: We support fully offline calls to local model services. All data and processing can run against your own on-device models. The Youtu-LLM series provides strong performance and agent ability for secure local work.
-- **Read files, browse pages—no problem**: GUI Agent and Youtu Agent capabilities let Tip simulate mouse/keyboard actions for desktop control, connect to agents/MCP servers/tools for complex tasks, and run a multifunction agent locally.
 
 
 ## How to use Tip
@@ -230,3 +230,29 @@ We provide a quick start covering “inference with transformers,” “configur
 ## License
 
 Youtu-Tip and Youtu-LLM are open-sourced under [LICENSE](./LICENSE).
+
+## 📚 Citation
+
+If you find this work useful, please consider citing:
+
+```bibtex
+@article{youtu-agent,
+  title={Youtu-Agent: Scaling Agent Productivity with Automated Generation and Hybrid Policy Optimization}, 
+  author={Tencent Youtu Lab},
+  year={2025},
+  eprint={2512.24615},
+  archivePrefix={arXiv},
+  primaryClass={cs.AI},
+  url={https://arxiv.org/abs/2512.24615}, 
+}
+
+@article{youtu-llm,
+  title={Youtu-LLM: Unlocking the Native Agentic Potential for Lightweight Large Language Models},
+  author={Tencent Youtu Lab},
+  year={2025},
+  eprint={2512.24618},
+  archivePrefix={arXiv},
+  primaryClass={cs.CL},
+  url={https://arxiv.org/abs/2512.24618}, 
+}
+```
