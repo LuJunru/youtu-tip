@@ -228,3 +228,30 @@ model = AutoModelForCausalLM.from_pretrained(
 ## 许可证
 
 Youtu-Tip 项目以及 Youtu-LLM 模型均基于 [LICENSE](./LICENSE) 进行开源许可。
+
+
+## 引用
+
+如果我们的工作有幸为您带来帮助，还希望您考虑引用这两篇文章:
+
+```bibtex
+@article{youtu-agent,
+  title={Youtu-Agent: Scaling Agent Productivity with Automated Generation and Hybrid Policy Optimization}, 
+  author={Tencent Youtu Lab},
+  year={2025},
+  eprint={2512.24615},
+  archivePrefix={arXiv},
+  primaryClass={cs.AI},
+  url={https://arxiv.org/abs/2512.24615}, 
+}
+
+@article{youtu-llm,
+  title={Youtu-LLM: Unlocking the Native Agentic Potential for Lightweight Large Language Models},
+  author={Tencent Youtu Lab},
+  year={2025},
+  eprint={2512.24618},
+  archivePrefix={arXiv},
+  primaryClass={cs.CL},
+  url={https://arxiv.org/abs/2512.24618}, 
+}
+```
