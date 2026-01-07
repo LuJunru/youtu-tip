@@ -115,18 +115,18 @@ We provide our evaluation codes for reproducing the above scores.
 ## 🚀 Quick Start
 This guide will help you quickly deploy and invoke the **Youtu-LLM-2B** model. This model supports "Reasoning Mode", enabling it to generate higher-quality responses through Chain of Thought (CoT).
 
----
-
 ### 1. Environment Preparation
 
 Ensure your Python environment has the `transformers` library installed and that the version meets the requirements.
 
 ```bash
-pip install "transformers>=4.56" torch accelerate
+pip install "transformers>=4.56.0,<=4.57.1" torch accelerate
 
 ```
-
----
+> **Note**
+> - (1) We recommend to limit the version of transformers: pip install "transformers>=4.56.0,<=4.57.1", which is comparable with the current remote codes;
+> - (2) Do not use transformers==4.57.2, since there is a [bug unfixed](https://github.com/huggingface/transformers/issues/42395);
+> - (3) If you would like to maintain a higher version (e.g., 4.57.3), you should slightly modify the "[check_model_inputs](https://huggingface.co/tencent/Youtu-LLM-2B/blob/main/modeling_youtu.py#L474)" in modeling_youtu.py to "check_model_inputs()", following the [patch](https://github.com/huggingface/transformers/commit/ede92a8755e48da7ae1d1b7d976ad581aa5c8327#diff-00deeb775525887b5d4f029e8084dd85737e561d4e2606ec8b4787f55d6cf286).
 
 ### 2. Core Code Example
 
@@ -134,7 +134,6 @@ The following example demonstrates how to load the model, enable Reasoning Mode,
 
 ```python
 import re
-import torch
 from transformers import AutoTokenizer, AutoModelForCausalLM
 
 # 1. Configure Model
@@ -153,23 +152,27 @@ prompt = "Hello"
 messages = [{"role": "user", "content": prompt}]
 
 # Use apply_chat_template to construct input; set enable_thinking=True to activate Reasoning Mode
-input_ids = tokenizer.apply_chat_template(
-    messages, 
-    tokenize=True, 
-    add_generation_prompt=True, 
-    return_tensors="pt",
+input_text = tokenizer.apply_chat_template(
+    messages,
+    tokenize=False,
+    add_generation_prompt=True,
     enable_thinking=True
-).to(model.device)
+)
+
+model_inputs = tokenizer([input_text], return_tensors="pt").to(model.device)
+print("Input prepared. Starting generation...")
 
 # 4. Generate Response
 outputs = model.generate(
-    input_ids,
+    **model_inputs,
     max_new_tokens=512,
     do_sample=True,
     temperature=1.0,
+    top_k=20,
     top_p=0.95,
     repetition_penalty=1.05
 )
+print("Generation complete!")
 
 # 5. Parse Results
 full_response = tokenizer.decode(outputs[0], skip_special_tokens=True)
@@ -191,10 +194,7 @@ thought, final_answer = parse_reasoning(full_response)
 
 print(f"\n{'='*20} Thought Process {'='*20}\n{thought}")
 print(f"\n{'='*20} Final Answer {'='*20}\n{final_answer}")
-
 ```
-
----
 
 ### 3. Key Configuration Details
 
@@ -218,8 +218,6 @@ Depending on your use case, we suggest adjusting the following hyperparameters f
 | `repetition_penalty` | 1.05 | - |
 
 > **Tip:** When using Reasoning Mode, a higher `temperature` helps the model perform deeper, more divergent thinking.
-
----
 
 ### 4. vLLM Deployment
 
@@ -249,7 +247,6 @@ To enable tool calling capabilities, please append the following arguments to th
 ```bash
 --enable-auto-tool-choice --tool-call-parser hermes
 ```
-
 
 ## 📚 Citation
 
