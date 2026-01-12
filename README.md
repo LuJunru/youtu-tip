@@ -38,7 +38,7 @@ Tip focuses on “better interaction, safer privacy, broader capability”:
 - **Data and privacy safety**: Many LLM agent apps default to processing data in the cloud. For privacy-sensitive scenarios like social platforms, users may not want screen content sent to cloud models and instead prefer private on-device solutions.
 - **The last mile of interaction**: LLM apps usually start with a chat box and require typing. We want a smarter way to complete context: no manual typing, copy/paste, or image uploads—Tip understands what is on screen, completes context, infers intent, and suggests actions to reduce typing and close the interaction gap.
 - **On-device agent environment**: Most agents live in the cloud, making it hard to run local tasks like “understand and organize local files” or “check chats on a social platform.” We aim to provide a mature framework and environment so users can run a more capable agent locally.
-- **New Desktop Skills, Learn and Master:** We've designed a "GUI skill" mechanism for the GUI Agent, allowing Tip to learn new skills from methods taught to it by users. For example, teaching a large model how to "perform specific data cleanup" or "use user-specific tools to perform tasks," customizing your desktop automation skills.
+
 
 ## How to use Tip
 
