@@ -8,7 +8,7 @@ Tip 是一个主动式端侧AI助手，将鼠标作为超级入口，智能地�
 3. 按 `ctrl + shift` 激活 Tip，选择文本或框选区域开始对话；在菜单栏切换模式或配置模型。
 
 ### 接入 Youtu-LLM
-1. 安装并启动 Youtu-LLM 模型（参考 Youtu-LLM 仓库说明），确保开放兼容 OpenAI SDK 的接口。
+1. 安装并启动 Youtu-LLM 模型（参考 [Youtu-LLM说明](https://github.com/TencentCloudADP/youtu-tip/blob/master/youtu-llm/README_CN.md)），确保开放兼容 OpenAI SDK 的接口。
 2. 在 Youtu-Tip 设置中新增模型，填写服务地址和相关信息进行调用。
 
 

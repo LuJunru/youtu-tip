@@ -8,7 +8,7 @@ Tip is a proactive on-device AI assistant that treats your mouse as a super entr
 3. Press `ctrl + shift` to activate Tip, select text or drag a region to start a conversation; switch modes or configure models from the menu bar.
 
 ### Connect to Youtu-LLM
-1. Install and start the Youtu-LLM model (see the Youtu-LLM repo) and make sure it exposes an OpenAI-compatible endpoint.
+1. Install and start the Youtu-LLM model (see the [Youtu-LLM](https://github.com/TencentCloudADP/youtu-tip/blob/master/youtu-llm/README.md)) and make sure it exposes an OpenAI-compatible endpoint.
 2. Add a model in Youtu-Tip settings, filling in the service URL and related info to start calling it.
 
 ## Local Development
